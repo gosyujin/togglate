@@ -47,6 +47,70 @@ module Togglate
       exit
     end
 
+    desc "diff FILE", "Extract commented contents from a FILE"
+    option :difference, aliases:'-d', desc:"Difference path local-original"
+    option :revision, aliases:'-r', default:'master', desc:"Base revision DEFAULT: master"
+    option :remains, aliases:'-r', default:false, type: :boolean, desc:"Output remaining text after extraction of comments"
+    option :tag, aliases:'-t', default:'original', desc:"Specify comment tag name"
+    def diff(file)
+      local_doc = "#{file}_togglate_local"
+      original_doc = "#{file}_togglate_original"
+      system("touch #{local_doc}")
+      system("touch #{original_doc}")
+
+      # get local doc of commentout
+      $stdout = File.open("#{local_doc}", 'w')
+      commentout(file)
+      $stdout.close
+      $stdout = STDOUT
+      puts "Local doc: #{file}"
+
+      # get remote doc
+      raw_url = 'https://raw.githubusercontent.com'
+      user = ''
+      repository = ''
+
+      remote = `git remote -v`
+      remote = remote.split("\n")
+      remote.each do |r|
+        if r =~ /^togglate\t(.*) \(fetch\)/
+          togglate_url = $1.split("/")
+          user = togglate_url[-2]
+          repository = togglate_url[-1].delete!(".git")
+        end
+      end
+
+      revision = options['revision']
+      difference = options['difference']
+      if difference.nil?
+        original_doc_url = "#{raw_url}/#{user}/#{repository}/#{revision}/#{file}"
+      else
+        original_doc_url = "#{raw_url}/#{user}/#{repository}/#{revision}/#{difference}/#{file}"
+      end
+      puts "Original doc url: #{original_doc_url}"
+      puts " GitHub user: #{user}"
+      puts " GitHub repository: #{repository}"
+      puts " Revision: #{revision}"
+
+      system("curl -s  #{original_doc_url} > #{original_doc}")
+
+      # diff
+      system("diff -u #{local_doc} #{original_doc}")
+      case $?
+      when 0
+        puts 'Diff result: OK'
+        exit 0
+      else
+        puts 'Diff result: NG'
+        exit 1
+      end
+      system("rm #{local_doc}")
+      system("rm #{original_doc}")
+    ensure
+      system("rm #{local_doc}")
+      system("rm #{original_doc}")
+    end
+
     desc "version", "Show Togglate version"
     def version
       puts "Togglate #{Togglate::VERSION} (c) 2014 kyoendo"
